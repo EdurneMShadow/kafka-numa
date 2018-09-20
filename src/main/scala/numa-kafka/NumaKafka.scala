@@ -4,6 +4,7 @@ package numa
   */
 import com.typesafe.config.ConfigFactory
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.spark.streaming.kafka010.ConsumerStrategies.Subscribe
@@ -11,18 +12,19 @@ import org.apache.spark.streaming.kafka010.LocationStrategies.PreferConsistent
 import org.apache.spark.streaming.kafka010._
 
 object NumaKafka {
-
   
-  def main(args : Array[String]) {
+  def main(args : Array[String]): Unit = {
     implicit val spark: SparkSession = SparkSession.builder().master("local").appName("numa-kafka").getOrCreate()
+    import spark.implicits._
     implicit val ssc = new StreamingContext(spark.sparkContext, Seconds(1))
+    val sc = ssc.sparkContext
+    sc.setLogLevel("ERROR")
     val conf = ConfigFactory.load()
     val kafkaServer = conf.getString("kafka.kafka-server")
     val groupId = conf.getString("kafka.group-id")
     val topic = List(conf.getString("kafka.topic"))
     val autoOffset = conf.getString("kafka.auto-offset")
     val autoCommit = conf.getString("kafka.auto-commit")
-
 
 
     val kafkaParams = Map[String, Object](
@@ -33,33 +35,30 @@ object NumaKafka {
       "auto.offset.reset" -> autoOffset,
       "enable.auto.commit" -> autoCommit
     )
-    val topics = topic
-    val messages = KafkaUtils.createDirectStream[String, String](
+
+    val inputStream = KafkaUtils.createDirectStream(
       ssc,
-      PreferConsistent, Subscribe[String, String](topics, kafkaParams)
+      LocationStrategies.PreferConsistent,
+      Subscribe[String, String](Array("numa-topic"), kafkaParams)
     )
-    messages.map(record => (record.key, record.value))
 
-    import spark.implicits._
+    inputStream.foreachRDD { (rdd, time) =>
+      println("Nuevo Batch")
+      val offsets = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
+      println(offsets.toList.mkString("\n"))
 
-    messages.foreachRDD { rdd =>
-      val offsetRanges = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
-      val dfWithOriginalMessages = rdd.map(_.value()).toDF
-      dfWithOriginalMessages.show()
+      rdd.foreach { elem =>
+        println(s"${elem.key} - ${elem.value} ")
+
+      }
+      println("")
+      inputStream.asInstanceOf[CanCommitOffsets].commitAsync(offsets)
+
+
     }
 
-
-
-    /*
-
-
-
-    val messages = KafkaStreamReader.readStream(kafkaServers, inputTopic, groupId, securedKafka)
-    messages.foreachRDD { rdd =>
-      val offsetRanges = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
-      val dfWithOriginalMessages = rdd.map(_.value()).toDF(originalTextColumn)
-
-  }*/
+    ssc.start()
+    ssc.awaitTerminationOrTimeout(Seconds(10000).milliseconds)
 
   }
 }
