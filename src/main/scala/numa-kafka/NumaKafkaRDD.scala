@@ -11,8 +11,8 @@ import org.apache.spark.streaming.kafka010.ConsumerStrategies.Subscribe
 import org.apache.spark.streaming.kafka010.LocationStrategies.PreferConsistent
 import org.apache.spark.streaming.kafka010._
 
-object NumaKafka {
-  
+object NumaKafkaRDD {
+
   def main(args : Array[String]): Unit = {
     implicit val spark: SparkSession = SparkSession.builder().master("local").appName("numa-kafka").getOrCreate()
     import spark.implicits._
@@ -46,14 +46,13 @@ object NumaKafka {
       println("Nuevo Batch")
       val offsets = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
       println(offsets.toList.mkString("\n"))
-
+      
       rdd.foreach { elem =>
         println(s"${elem.key} - ${elem.value} ")
 
       }
       println("")
       inputStream.asInstanceOf[CanCommitOffsets].commitAsync(offsets)
-
 
     }
 
