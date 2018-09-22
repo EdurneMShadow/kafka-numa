@@ -11,10 +11,10 @@ import org.apache.spark.streaming.kafka010.ConsumerStrategies.Subscribe
 import org.apache.spark.streaming.kafka010.LocationStrategies.PreferConsistent
 import org.apache.spark.streaming.kafka010._
 
-object NumaKafkaRDD {
+object Iva {
 
   def main(args : Array[String]): Unit = {
-    implicit val spark: SparkSession = SparkSession.builder().master("local").appName("numa-kafka").getOrCreate()
+    implicit val spark: SparkSession = SparkSession.builder().master("local").appName("numa-kafkaRDD2").getOrCreate()
     import spark.implicits._
     implicit val ssc = new StreamingContext(spark.sparkContext, Seconds(1))
     val sc = ssc.sparkContext
@@ -25,6 +25,7 @@ object NumaKafkaRDD {
     val topic = List(conf.getString("kafka.topic"))
     val autoOffset = conf.getString("kafka.auto-offset")
     val autoCommit = conf.getString("kafka.auto-commit")
+
 
     val kafkaParams = Map[String, Object](
       "bootstrap.servers" -> kafkaServer,
@@ -38,25 +39,41 @@ object NumaKafkaRDD {
     val inputStream = KafkaUtils.createDirectStream(
       ssc,
       LocationStrategies.PreferConsistent,
-      Subscribe[String, String](topic, kafkaParams)
+      Subscribe[String, String](Array("numa-topic"), kafkaParams)
     )
 
+    implicit def stringToInt(s: String) = s.toInt
+
     inputStream.foreachRDD { (rdd, time) =>
-      println("Nuevo microbatch")
+      println("Nuevo Batch")
       val offsets = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
       println(offsets.toList.mkString("\n"))
 
-      rdd.foreach { elem =>
-        println(s"${elem.key} - ${elem.value} ")
-
+      rdd.foreach{ elem =>
+        elem.key() match {
+          case "general" => {
+            val result = (elem.value * 0.21) + elem.value
+            println(s"${elem.key} - $result")
+          }
+          case "reducido" => {
+            val result = (elem.value * 0.10) + elem.value
+            println(s"${elem.key} - $result")
+          }
+          case "superreducido" => {
+            val result = (elem.value * 0.04) + elem.value
+            println(s"${elem.key} - $result")
+          }
+        }
       }
+
       println("")
       inputStream.asInstanceOf[CanCommitOffsets].commitAsync(offsets)
 
     }
 
     ssc.start()
-    ssc.awaitTerminationOrTimeout(Seconds(10000).milliseconds)
+    ssc.awaitTerminationOrTimeout(Seconds(100000).milliseconds)
 
   }
 }
+

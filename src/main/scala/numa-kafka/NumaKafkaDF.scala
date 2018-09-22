@@ -7,6 +7,7 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.kafka.common.serialization.StringDeserializer
+import org.apache.spark.sql.types.DataType
 import org.apache.spark.streaming.kafka010.ConsumerStrategies.Subscribe
 import org.apache.spark.streaming.kafka010.LocationStrategies.PreferConsistent
 import org.apache.spark.streaming.kafka010._
@@ -36,11 +37,32 @@ object NumaKafkaDF {
       "enable.auto.commit" -> autoCommit
     )
 
+
+    val historyDF = Seq.empty[String].toDF("k")
     val inputStream = KafkaUtils.createDirectStream(
       ssc,
       LocationStrategies.PreferConsistent,
-      Subscribe[String, String](Array("numa-topic"), kafkaParams)
+      Subscribe[String, String](Array("numa-topic"), kafkaParams) // TODO comprobar si funciona cambiando el array por el valor topic
     )
+
+
+/*    inputStream.foreachRDD { (rdd, time) =>
+      println("Nuevo Batch")
+      val offsets = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
+      println(offsets.toList.mkString("\n"))
+
+      val dfWithOriginalMessages = rdd.map(_.value()).toDF("df")
+      rdd.foreach { elem =>
+        println(s"${elem.key} - ${elem.value} ")
+
+      }
+      println("")
+      inputStream.asInstanceOf[CanCommitOffsets].commitAsync(offsets)
+      dfWithOriginalMessages.show(60, truncate = false)
+      historyDF.union(dfWithOriginalMessages)
+      historyDF.show()
+
+    }*/
 
     inputStream.foreachRDD { (rdd, time) =>
       println("Nuevo Batch")
@@ -55,9 +77,10 @@ object NumaKafkaDF {
       println("")
       inputStream.asInstanceOf[CanCommitOffsets].commitAsync(offsets)
       dfWithOriginalMessages.show(60, truncate = false)
+      historyDF.union(dfWithOriginalMessages)
+      historyDF.show()
 
     }
-
     ssc.start()
     ssc.awaitTerminationOrTimeout(Seconds(10000).milliseconds)
 
